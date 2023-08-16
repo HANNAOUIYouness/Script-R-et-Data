@@ -1,0 +1,356 @@
+---
+title: "Classification parcours allocataires"
+output: html_document
+date: "2023-06-20"
+---
+---
+```{r warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(NbClust)
+library(FactoMineR)
+library(ie2misc)
+library(NbClust)
+library(cluster)
+library(corrplot)
+library(factoextra)
+library(GGally)
+```
+
+#les bases de données à classifier 
+```{r warning=FALSE}
+#on remplace les NA pas 0 pour "Montant_moyen_mensuel_percu", ce sont des indinidus qui n'ont rien recu .
+classification_parcours <- classification_parcours %>%
+  mutate(Montant_moyen_mensuel_percu = ifelse(is.na(Montant_moyen_mensuel_percu), 0, Montant_moyen_mensuel_percu))
+
+
+classification_nb_presence_1 <- classification_parcours %>%
+  dplyr::filter(Nb_presence == 1)
+classification_nb_presence_1 <- classification_nb_presence_1[,-c(2,4:10,14)]
+
+classification_nb_presence_2 <- classification_parcours %>%
+  dplyr::filter(Nb_presence == 2)
+classification_nb_presence_2 <- classification_nb_presence_2[,-c(2,5,6,8,9,10,14)]
+#creer les taux d'accroissement entre les durees
+#classification_nb_presence_2$e_d1_d2 <- ((classification_nb_presence_2$d2 - classification_nb_presence_2$d1) / classification_nb_presence_2$d1) * 100
+
+
+classification_nb_presence_3 <- classification_parcours %>%
+  dplyr::filter(Nb_presence == 3)
+classification_nb_presence_3 <- classification_nb_presence_3[,-c(2,6,9,10,14)]
+#Taux d'évolution entre d1 et d2 :
+#classification_nb_presence_3$e_d1_d2 <- ((classification_nb_presence_3$d2 - classification_nb_presence_3$d1) / classification_nb_presence_3$d1) * 100
+#Taux d'évolution entre d2 et d3 :
+#classification_nb_presence_3$e_d2_d3 <- ((classification_nb_presence_3$d3 - classification_nb_presence_3$d2) / classification_nb_presence_3$d2) * 100
+
+
+classification_nb_presence_4 <- classification_parcours %>%
+  dplyr::filter(Nb_presence == 4)
+classification_nb_presence_4 <- classification_nb_presence_4[,-c(2,10,14)]
+#Taux d'évolution
+#classification_nb_presence_4$e_d1_d2 <- ((classification_nb_presence_4$d2 - classification_nb_presence_4$d1) / classification_nb_presence_4$d1) * 100
+#classification_nb_presence_4$e_d2_d3 <- ((classification_nb_presence_4$d3 - classification_nb_presence_4$d2) / classification_nb_presence_4$d2) * 100
+#classification_nb_presence_4$e_d3_d4 <- ((classification_nb_presence_4$d4 - classification_nb_presence_4$d3) / classification_nb_presence_4$d3) * 100
+```
+
+#Distribution du nombre de presnece
+```{r warning=FALSE}
+library(kableExtra)
+library(htmltools)
+
+# Calculer les pourcentages pour chaque catégorie de Nb_presence
+pourcentages <- classification_parcours %>%
+  count(Nb_presence) %>%
+  mutate(percentage = round(n / sum(n) * 100, 1))
+
+# Renommer les colonnes
+pourcentages <- pourcentages %>%
+  rename("Nombre de presences" = Nb_presence,
+         "Nombre de beneficiaires" = n,
+         "Pourcentages" = percentage)
+
+# Créer le tableau
+tableau <- pourcentages %>%
+  kable(format = "html", caption = "Graphique 4.2") %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE) 
+
+
+# Afficher le tableau HTML
+print(tableau)
+```
+
+#Classification Nombre de presence 1
+```{r}
+data1 <- classification_nb_presence_1
+```
+
+
+```{r}
+df.quanti <-data1[,-c(1)]
+summary(df.quanti)
+for (i in 1:4) boxplot(df.quanti[,i], main=paste("Variable ",names(df.quanti)[i],sep=""))
+```
+
+```{r}
+ggcorr(df.quanti, low = "navy", high = "darkred", hjust = 1, size = 3, label = TRUE,label_size = 2)
+```
+
+```{r}
+standardisation = function(x){
+  z <- (x - mean(x)) / madstat(x)
+  return( z)
+}
+# Si presence d’outliers (valeurs aberrantes) : on prefere utiliser l’´ecartmoyen absolu (mean absolute deviation)
+df.quanti[1:4] <-
+  apply(df.quanti[1:4], 2, standardisation)
+#View(df.quanti)
+# On n'a pas besoins de faire ca 
+```
+
+```{r warning=FALSE}
+K=4
+cl = kmeans(df.quanti,K,nstart=50)
+varintra = sapply(1:20,FUN=function(k){ kmeans(df.quanti,k,nstart=50)$tot.withinss })
+plot(varintra,type="b")
+# 4 groupes 
+```
+
+```{r}
+nbclustkmeans = NbClust(df.quanti,min.nc = 2,max.nc = 10,method="kmeans",index="all")
+```
+
+```{r}
+clusplot(df.quanti,cl$cluster, labels=4, main="kmeans", col.p=cl$cluster)
+```
+
+```{r}
+plot(acp$scores[,1],acp$scores[,2],type="n",xlab="Axe1",ylab="Axe2",main="K-means")
+text(acp$scores[,1],acp$scores[,2],col=cl$cluster,cex=0.65)
+abline(v=2.5,lty=2,lwd=0.5);abline(h=0,lty=2,lwd=0.5)
+```
+
+## 3. Etude des groupes obtenus
+```{r}
+factoextra::fviz_cluster(object = cl, data = df.quanti, labelsize = 0) + theme_minimal()
+```
+
+### interpréter les groupes
+
+```{r}
+#df.quanti <-data1[,-c(1,2)]
+#df.quanti$NB_PERS_CHARGE_derniere_situation <- as.factor(df.quanti$NB_PERS_CHARGE_derniere_situation)
+df.quanti$cluster = as.factor(cl$cluster)
+interpcah = catdes(df.quanti,num.var = 5)
+interpcah
+```
+
+```{r}
+plot.catdes(interpcah,barplot=T)
+```
+
+#Classification Nombre de presence 2
+```{r}
+data1 <- classification_nb_presence_2
+```
+
+```{r}
+df.quanti <-data1[,-c(1)]
+summary(df.quanti)
+for (i in 1:6) boxplot(df.quanti[,i], main=paste("Variable ",names(df.quanti)[i],sep=""))
+```
+
+```{r}
+ggcorr(df.quanti, low = "navy", high = "darkred", hjust = 1, size = 3, label = TRUE,label_size = 2)
+```
+
+```{r}
+standardisation = function(x){
+  z <- (x - mean(x)) / madstat(x)
+  return( z)
+}
+# Si presence d’outliers (valeurs aberrantes) : on prefere utiliser l’´ecartmoyen absolu (mean absolute deviation)
+df.quanti[1:6] <-
+  apply(df.quanti[1:6], 2, standardisation)
+#View(df.quanti)
+# On n'a pas besoins de faire ca 
+```
+
+```{r warning=FALSE}
+K=4
+cl = kmeans(df.quanti,K,nstart=50)
+varintra = sapply(1:20,FUN=function(k){ kmeans(df.quanti,k,nstart=50)$tot.withinss })
+plot(varintra,type="b")
+# 6 groupes 
+```
+
+```{r}
+nbclustkmeans = NbClust(df.quanti,min.nc = 2,max.nc = 10,method="kmeans",index="all")
+```
+
+```{r}
+clusplot(df.quanti,cl$cluster, labels=4, main="kmeans", col.p=cl$cluster)
+```
+
+```{r}
+plot(acp$scores[,1],acp$scores[,2],type="n",xlab="Axe1",ylab="Axe2",main="K-means")
+text(acp$scores[,1],acp$scores[,2],col=cl$cluster,cex=0.65)
+abline(v=2.5,lty=2,lwd=0.5);abline(h=0,lty=2,lwd=0.5)
+```
+
+## 3. Etude des groupes obtenus
+```{r}
+factoextra::fviz_cluster(object = cl, data = df.quanti, labelsize = 0) + theme_minimal()
+```
+
+### interpréter les groupes
+
+```{r}
+#df.quanti <-data1[,-c(1,2)]
+#df.quanti$NB_PERS_CHARGE_derniere_situation <- as.factor(df.quanti$NB_PERS_CHARGE_derniere_situation)
+df.quanti$cluster = as.factor(cl$cluster)
+interpcah = catdes(df.quanti,num.var = 7)
+interpcah
+```
+
+```{r}
+plot.catdes(interpcah,barplot=T)
+```
+
+#Classification Nombre de presence 3
+```{r}
+data1 <- classification_nb_presence_3
+```
+
+```{r}
+df.quanti <-data1[,-c(1)]
+summary(df.quanti)
+for (i in 1:8) boxplot(df.quanti[,i], main=paste("Variable ",names(df.quanti)[i],sep=""))
+```
+
+```{r}
+ggcorr(df.quanti, low = "navy", high = "darkred", hjust = 1, size = 3, label = TRUE,label_size = 2)
+```
+
+```{r}
+standardisation = function(x){
+  z <- (x - mean(x)) / madstat(x)
+  return( z)
+}
+# Si presence d’outliers (valeurs aberrantes) : on prefere utiliser l’´ecartmoyen absolu (mean absolute deviation)
+df.quanti[1:8] <-
+  apply(df.quanti[1:8], 2, standardisation)
+ 
+```
+
+```{r warning=FALSE}
+K=4
+cl = kmeans(df.quanti,K,nstart=50)
+varintra = sapply(1:20,FUN=function(k){ kmeans(df.quanti,k,nstart=50)$tot.withinss })
+plot(varintra,type="b")
+# 6 groupes 
+```
+
+```{r}
+nbclustkmeans = NbClust(df.quanti,min.nc = 2,max.nc = 10,method="kmeans",index="all")
+```
+
+```{r}
+clusplot(df.quanti,cl$cluster, labels=4, main="kmeans", col.p=cl$cluster)
+```
+
+```{r}
+plot(acp$scores[,1],acp$scores[,2],type="n",xlab="Axe1",ylab="Axe2",main="K-means")
+text(acp$scores[,1],acp$scores[,2],col=cl$cluster,cex=0.65)
+abline(v=2.5,lty=2,lwd=0.5);abline(h=0,lty=2,lwd=0.5)
+```
+
+## 3. Etude des groupes obtenus
+```{r}
+factoextra::fviz_cluster(object = cl, data = df.quanti, labelsize = 0) + theme_minimal()
+```
+
+### interpréter les groupes
+
+```{r}
+#df.quanti <-data1[,-c(1,2)]
+#df.quanti$NB_PERS_CHARGE_derniere_situation <- as.factor(df.quanti$NB_PERS_CHARGE_derniere_situation)
+df.quanti$cluster = as.factor(cl$cluster)
+interpcah = catdes(df.quanti,num.var = 9)
+interpcah
+```
+
+```{r}
+plot.catdes(interpcah,barplot=T)
+```
+
+#Classification Nombre de presence 4
+```{r}
+data1 <- classification_nb_presence_4
+```
+
+```{r}
+df.quanti <-data1[,-c(1)]
+summary(df.quanti)
+for (i in 1:10) boxplot(df.quanti[,i], main=paste("Variable ",names(df.quanti)[i],sep=""))
+```
+
+```{r}
+ggcorr(df.quanti, low = "navy", high = "darkred", hjust = 1, size = 3, label = TRUE,label_size = 2)
+```
+
+# Standardisation ?
+## La standardisation des données a pour objectif d’assurer une interopérabilité optimale des données, en vue de leur réutilisation. L’application d’une « commune mesure » permet d’améliorer la qualité des données, notamment pour des activités de data cleaning, data profiling et data matching.
+```{r}
+standardisation = function(x){
+  z <- (x - mean(x)) / madstat(x)
+  return( z)
+}
+# Si presence d’outliers (valeurs aberrantes) : on prefere utiliser l’´ecartmoyen absolu (mean absolute deviation)
+df.quanti[1:10] <-
+  apply(df.quanti[1:10], 2, standardisation)
+#View(df.quanti)
+# On n'a pas besoins de faire ca 
+```
+
+### Méthode kmeans
+
+```{r warning=FALSE}
+K=4
+cl = kmeans(df.quanti,K,nstart=50)
+varintra = sapply(1:20,FUN=function(k){ kmeans(df.quanti,k,nstart=50)$tot.withinss })
+plot(varintra,type="b")
+# 6 groupes 
+```
+
+```{r}
+nbclustkmeans = NbClust(df.quanti,min.nc = 2,max.nc = 10,method="kmeans",index="all")
+```
+
+```{r}
+clusplot(df.quanti,cl$cluster, labels= 4, main="kmeans", col.p=cl$cluster)
+```
+
+```{r}
+plot(acp$scores[,1],acp$scores[,2],type="n",xlab="Axe1",ylab="Axe2",main="K-means")
+text(acp$scores[,1],acp$scores[,2],col=cl$cluster,cex=0.65)
+abline(v=2.5,lty=2,lwd=0.5);abline(h=0,lty=2,lwd=0.5)
+```
+
+## 3. Etude des groupes obtenus
+```{r}
+factoextra::fviz_cluster(object = cl, data = df.quanti, labelsize = 0) + theme_minimal()
+```
+
+### interpréter les groupes
+
+```{r}
+#df.quanti <-data1[,-c(1,2)]
+#df.quanti$NB_PERS_CHARGE_derniere_situation <- as.factor(df.quanti$NB_PERS_CHARGE_derniere_situation)
+df.quanti$cluster = as.factor(cl$cluster)
+interpcah = catdes(df.quanti,num.var = 11)
+interpcah
+```
+
+```{r}
+plot.catdes(interpcah,barplot=T)
+```
